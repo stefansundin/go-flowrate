@@ -26,7 +26,7 @@ type Limiter interface {
 // Reader implements io.ReadCloser with a restriction on the rate of data
 // transfer.
 type Reader struct {
-	io.Reader // Data source
+	io.ReadSeeker // Data source
 	*Monitor  // Flow control monitor
 
 	limit int64 // Rate limit in bytes per second (unlimited when <= 0)
@@ -34,7 +34,7 @@ type Reader struct {
 }
 
 // NewReader restricts all Read operations on r to limit bytes per second.
-func NewReader(r io.Reader, limit int64) *Reader {
+func NewReader(r io.ReadSeeker, limit int64) *Reader {
 	return &Reader{r, New(0, 0), limit, true}
 }
 
@@ -44,7 +44,14 @@ func NewReader(r io.Reader, limit int64) *Reader {
 func (r *Reader) Read(p []byte) (n int, err error) {
 	p = p[:r.Limit(len(p), r.limit, r.block)]
 	if len(p) > 0 {
-		n, err = r.IO(r.Reader.Read(p))
+		n, err = r.IO(r.ReadSeeker.Read(p))
+	}
+	return
+}
+
+func (r *Reader) Seek(offset int64, whence int) (n int64, err error) {
+	if c, ok := r.ReadSeeker.(io.Seeker); ok {
+		n, err = c.Seek(offset, whence)
 	}
 	return
 }
@@ -67,7 +74,7 @@ func (r *Reader) SetBlocking(new bool) (old bool) {
 // Close closes the underlying reader if it implements the io.Closer interface.
 func (r *Reader) Close() error {
 	defer r.Done()
-	if c, ok := r.Reader.(io.Closer); ok {
+	if c, ok := r.ReadSeeker.(io.Closer); ok {
 		return c.Close()
 	}
 	return nil
